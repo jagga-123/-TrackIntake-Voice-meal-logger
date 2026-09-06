@@ -1,0 +1,65 @@
+/* Design tokens: TrackIntake-like palette (orange accent, indigo secondary). */
+:root {
+  --color-accent: #ff6b3d;
+  --color-accent-strong: #e85a2c;
+  --color-accent-soft: #fff1eb;
+  --color-indigo: #4338ca;
+  --color-indigo-soft: #eef0ff;
+  --color-bg: #f6f7fb;
+  --color-card: #ffffff;
+  --color-text: #111827;
+  --color-text-muted: #6b7280;
+  --color-border: #e5e7eb;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  --color-success: #059669;
+  --color-success-soft: #ecfdf5;
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.04), 0 10px 30px rgba(17, 24, 39, 0.07);
+  --shadow-glow: 0 12px 32px rgba(255, 107, 61, 0.35);
+
+  --radius-lg: 20px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
