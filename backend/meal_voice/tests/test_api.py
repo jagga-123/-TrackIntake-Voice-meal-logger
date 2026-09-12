@@ -157,7 +157,7 @@ def test_preview_rejects_oversized_audio(auth_client: APIClient, settings: Any) 
     [
         (MealParseError("No food items were detected in the transcript."), 422, "meal_parse_failed"),
         (TranscriptionError(), 502, "transcription_failed"),
-        (LLMUnavailableError("Anthropic request failed (RateLimitError)."), 502, "llm_unavailable"),
+        (LLMUnavailableError("Gemini request failed (ClientError 429)."), 502, "llm_unavailable"),
     ],
 )
 def test_preview_maps_pipeline_errors_to_http(

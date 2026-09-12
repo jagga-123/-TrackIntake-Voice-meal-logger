@@ -1,9 +1,9 @@
 """LLM-backed extraction of structured meal data from free-form transcripts.
 
 The parser is provider-agnostic: anything satisfying :class:`LLMClient` can be
-injected. Three providers ship out of the box (Anthropic Claude, OpenAI, Google
-Gemini), chosen by :func:`build_llm_client` from settings; tests inject a
-scripted client so they stay hermetic.
+injected. Two providers ship out of the box (Google Gemini, OpenAI), chosen by
+:func:`build_llm_client` from settings; tests inject a scripted client so they
+stay hermetic.
 """
 
 from __future__ import annotations
@@ -219,43 +219,13 @@ class ParsedMeal(BaseModel):
         return max(0.0, min(1.0, value))
 
 
-class AnthropicLLMClient:
-    """Chat completion through the official ``anthropic`` SDK with JSON-schema output."""
-
-    provider = "anthropic"
-
-    def __init__(self, api_key: str, model: str, timeout: float = 60.0) -> None:
-        import anthropic  # deferred so the OpenAI-only deployment needs no Anthropic SDK
-
-        self._sdk = anthropic
-        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
-        self.model = model
-
-    def complete(self, system: str, messages: list[ChatMessage]) -> str:
-        """Call Claude with the meal schema enforced via structured outputs."""
-        try:
-            response = self._client.messages.create(
-                model=self.model,
-                max_tokens=MAX_OUTPUT_TOKENS,
-                system=system,
-                messages=messages,
-                output_config={"format": {"type": "json_schema", "schema": MEAL_JSON_SCHEMA}},
-            )
-        except self._sdk.APIError as exc:
-            raise LLMUnavailableError(_describe_api_error("Anthropic", exc)) from exc
-
-        if response.stop_reason == "refusal":
-            raise MealParseError("The model declined to process this transcript.")
-        return next((block.text for block in response.content if block.type == "text"), "")
-
-
 class OpenAILLMClient:
     """Chat completion through the official ``openai`` SDK in JSON mode."""
 
     provider = "openai"
 
     def __init__(self, api_key: str, model: str, timeout: float = 60.0) -> None:
-        import openai  # deferred so the Anthropic-only deployment needs no OpenAI SDK
+        import openai  # deferred so a Gemini-only deployment needs no OpenAI SDK
 
         self._sdk = openai
         self._client = openai.OpenAI(api_key=api_key, timeout=timeout)
@@ -321,9 +291,8 @@ class GeminiLLMClient:
 # Provider name → (API-key setting, model setting, client factory). Dict order is
 # the priority used when LLM_PROVIDER is "auto".
 PROVIDER_REGISTRY: dict[str, tuple[str, str, Callable[[str, str, float], LLMClient]]] = {
-    "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", AnthropicLLMClient),
-    "openai": ("OPENAI_API_KEY", "OPENAI_MODEL", OpenAILLMClient),
     "gemini": ("GEMINI_API_KEY", "GEMINI_MODEL", GeminiLLMClient),
+    "openai": ("OPENAI_API_KEY", "OPENAI_MODEL", OpenAILLMClient),
 }
 
 
@@ -344,7 +313,7 @@ def build_llm_client() -> LLMClient:
         candidates = [requested]
     else:
         raise LLMUnavailableError(
-            f"Unknown LLM_PROVIDER {requested!r}; expected auto, anthropic, openai or gemini."
+            f"Unknown LLM_PROVIDER {requested!r}; expected auto, gemini or openai."
         )
 
     for name in candidates:
@@ -354,7 +323,7 @@ def build_llm_client() -> LLMClient:
             return factory(config[key_setting], config[model_setting], config["LLM_TIMEOUT_SECONDS"])
 
     raise LLMUnavailableError(
-        "No LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY."
+        "No LLM provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY."
     )
 
 

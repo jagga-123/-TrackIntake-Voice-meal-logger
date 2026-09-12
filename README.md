@@ -7,7 +7,7 @@ and save it as a meal log. Built as an internship assignment for
 
 | Layer    | Stack                                                                  |
 | -------- | ---------------------------------------------------------------------- |
-| Backend  | Django 5 · Django REST Framework · SimpleJWT · faster-whisper · Anthropic Claude / OpenAI / Google Gemini · pydantic |
+| Backend  | Django 5 · Django REST Framework · SimpleJWT · faster-whisper · Google Gemini (OpenAI fallback) · pydantic |
 | Frontend | React 18 · Vite · plain CSS Modules · axios · MediaRecorder API        |
 | Tests    | pytest + pytest-django (95 tests, no network or model downloads needed) |
 
@@ -19,7 +19,7 @@ and save it as a meal log. Built as an internship assignment for
 flowchart LR
     A[🎙 Browser audio<br/>MediaRecorder] -->|multipart webm/wav/mp3| B[POST /voice/preview/]
     B --> C[Whisper<br/>faster-whisper base]
-    C -->|transcript + language| D[LLM meal parser<br/>Claude, JSON schema]
+    C -->|transcript + language| D[LLM meal parser<br/>Gemini, JSON schema]
     D -->|items, quantities, units| E[Nutrition lookup<br/>indian_foods.json]
     E -->|table macros or LLM estimate| F[Preview JSON<br/>not saved]
     F --> G[Editable preview card]
@@ -44,7 +44,7 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate            # Windows   (macOS/Linux: source .venv/bin/activate)
 pip install -r requirements.txt
-copy .env.example .env            # then set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY
+copy .env.example .env            # then set GEMINI_API_KEY (or OPENAI_API_KEY)
 python manage.py migrate
 python manage.py createsuperuser  # any user can log meals; superuser also gets /admin/
 python manage.py runserver
@@ -267,18 +267,19 @@ being silently mapped to "salad". Every row carries `macro_source` and
 `matched_food` so provenance is visible in the UI.
 
 **Strict JSON from the LLM.** Every provider is asked for schema-constrained
-JSON (Claude via `output_config.format`, Gemini via `response_json_schema`,
-OpenAI via JSON mode), then the reply is validated with pydantic. Validation also
+JSON (Gemini via `response_json_schema`, OpenAI via JSON mode), then the reply
+is validated with pydantic. Validation also
 normalises what smaller models get wrong: Hindi number words, "katori"/"glass",
 missing quantities (→ 1 serving, `assumed_quantity=true`), out-of-range
 confidence. Invalid output triggers exactly one repair round-trip that shows the
 model its previous reply and the validation error; a second failure is a 422.
 
 **Provider abstraction.** `MealParser` depends on a two-method `LLMClient`
-protocol with Anthropic, OpenAI and Google Gemini implementations. With
-`LLM_PROVIDER=auto` the first provider that has an API key is used, in that
-order; set `LLM_PROVIDER=gemini` (or `anthropic` / `openai`) to force one.
-Tests inject a scripted client, so the whole suite runs offline in under a minute.
+protocol with Google Gemini and OpenAI implementations. With
+`LLM_PROVIDER=auto` the first provider that has an API key is used, Gemini
+first; set `LLM_PROVIDER=openai` (or `gemini`) to force one. Adding another
+provider is one class plus one registry entry. Tests inject a scripted client,
+so the whole suite runs offline in under a minute.
 
 **Whisper on CPU with `int8`.** The `base` checkpoint balances latency and
 accuracy for short clips; an `initial_prompt` in the meal domain nudges Whisper

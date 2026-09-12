@@ -12,7 +12,6 @@ from meal_voice.models import MealType, Unit
 from meal_voice.services.meal_parser import (
     MEAL_EXTRACTION_PROMPT,
     MEAL_JSON_SCHEMA,
-    AnthropicLLMClient,
     GeminiLLMClient,
     MealParser,
     OpenAILLMClient,
@@ -203,7 +202,7 @@ def test_prompt_and_schema_cover_required_fields() -> None:
 
 # --- Provider selection -----------------------------------------------------------
 
-NO_KEYS = {"ANTHROPIC_API_KEY": "", "OPENAI_API_KEY": "", "GEMINI_API_KEY": ""}
+NO_KEYS = {"GEMINI_API_KEY": "", "OPENAI_API_KEY": ""}
 
 
 def configure(settings: Any, provider: str = "auto", **keys: str) -> None:
@@ -214,11 +213,11 @@ def configure(settings: Any, provider: str = "auto", **keys: str) -> None:
 @pytest.mark.parametrize(
     ("provider", "keys", "expected"),
     [
-        ("auto", {"ANTHROPIC_API_KEY": "a", "OPENAI_API_KEY": "o", "GEMINI_API_KEY": "g"}, AnthropicLLMClient),
-        ("auto", {"OPENAI_API_KEY": "o", "GEMINI_API_KEY": "g"}, OpenAILLMClient),
+        ("auto", {"GEMINI_API_KEY": "g", "OPENAI_API_KEY": "o"}, GeminiLLMClient),
+        ("auto", {"OPENAI_API_KEY": "o"}, OpenAILLMClient),
         ("auto", {"GEMINI_API_KEY": "g"}, GeminiLLMClient),
-        ("gemini", {"ANTHROPIC_API_KEY": "a", "GEMINI_API_KEY": "g"}, GeminiLLMClient),
-        ("OpenAI", {"ANTHROPIC_API_KEY": "a", "OPENAI_API_KEY": "o"}, OpenAILLMClient),
+        ("openai", {"GEMINI_API_KEY": "g", "OPENAI_API_KEY": "o"}, OpenAILLMClient),
+        ("Gemini", {"GEMINI_API_KEY": "g", "OPENAI_API_KEY": "o"}, GeminiLLMClient),
     ],
 )
 def test_build_llm_client_selects_provider(
@@ -241,7 +240,7 @@ def test_build_llm_client_without_any_key_raises(settings: Any) -> None:
 
 
 def test_build_llm_client_explicit_provider_needs_its_own_key(settings: Any) -> None:
-    configure(settings, "gemini", ANTHROPIC_API_KEY="a")
+    configure(settings, "gemini", OPENAI_API_KEY="o")
 
     with pytest.raises(LLMUnavailableError, match="No LLM provider configured"):
         build_llm_client()
