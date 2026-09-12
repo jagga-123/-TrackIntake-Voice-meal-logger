@@ -11,6 +11,7 @@ faster-whisper>=1.0
 # Text → structured data
 anthropic>=0.69
 openai>=1.50
+google-genai>=1.0
 pydantic>=2.7
 
 # Tests

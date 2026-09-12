@@ -7,13 +7,17 @@ from typing import Any
 
 import pytest
 
-from meal_voice.exceptions import MealParseError
+from meal_voice.exceptions import LLMUnavailableError, MealParseError
 from meal_voice.models import MealType, Unit
 from meal_voice.services.meal_parser import (
     MEAL_EXTRACTION_PROMPT,
     MEAL_JSON_SCHEMA,
+    AnthropicLLMClient,
+    GeminiLLMClient,
     MealParser,
+    OpenAILLMClient,
     ParsedItem,
+    build_llm_client,
 )
 from meal_voice.tests.conftest import ScriptedLLMClient, item, macros, meal_json
 
@@ -195,3 +199,56 @@ def test_prompt_and_schema_cover_required_fields() -> None:
     }
     assert item_schema["properties"]["unit"]["enum"] == list(Unit.values)
     assert item_schema["additionalProperties"] is False
+
+
+# --- Provider selection -----------------------------------------------------------
+
+NO_KEYS = {"ANTHROPIC_API_KEY": "", "OPENAI_API_KEY": "", "GEMINI_API_KEY": ""}
+
+
+def configure(settings: Any, provider: str = "auto", **keys: str) -> None:
+    """Override the LLM section of ``VOICE_MEAL`` for one test."""
+    settings.VOICE_MEAL = {**settings.VOICE_MEAL, **NO_KEYS, "LLM_PROVIDER": provider, **keys}
+
+
+@pytest.mark.parametrize(
+    ("provider", "keys", "expected"),
+    [
+        ("auto", {"ANTHROPIC_API_KEY": "a", "OPENAI_API_KEY": "o", "GEMINI_API_KEY": "g"}, AnthropicLLMClient),
+        ("auto", {"OPENAI_API_KEY": "o", "GEMINI_API_KEY": "g"}, OpenAILLMClient),
+        ("auto", {"GEMINI_API_KEY": "g"}, GeminiLLMClient),
+        ("gemini", {"ANTHROPIC_API_KEY": "a", "GEMINI_API_KEY": "g"}, GeminiLLMClient),
+        ("OpenAI", {"ANTHROPIC_API_KEY": "a", "OPENAI_API_KEY": "o"}, OpenAILLMClient),
+    ],
+)
+def test_build_llm_client_selects_provider(
+    settings: Any, provider: str, keys: dict[str, str], expected: type
+) -> None:
+    configure(settings, provider, **keys)
+
+    client = build_llm_client()
+
+    assert isinstance(client, expected)
+    assert client.provider == expected.provider
+    assert client.model == settings.VOICE_MEAL[f"{expected.provider.upper()}_MODEL"]
+
+
+def test_build_llm_client_without_any_key_raises(settings: Any) -> None:
+    configure(settings)
+
+    with pytest.raises(LLMUnavailableError, match="GEMINI_API_KEY"):
+        build_llm_client()
+
+
+def test_build_llm_client_explicit_provider_needs_its_own_key(settings: Any) -> None:
+    configure(settings, "gemini", ANTHROPIC_API_KEY="a")
+
+    with pytest.raises(LLMUnavailableError, match="No LLM provider configured"):
+        build_llm_client()
+
+
+def test_build_llm_client_rejects_unknown_provider(settings: Any) -> None:
+    configure(settings, "cohere", GEMINI_API_KEY="g")
+
+    with pytest.raises(LLMUnavailableError, match="Unknown LLM_PROVIDER"):
+        build_llm_client()

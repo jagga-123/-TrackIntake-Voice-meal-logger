@@ -77,7 +77,10 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response |
     unexpected exceptions, so genuine bugs are never masked as client errors.
     """
     if isinstance(exc, VoiceMealError):
-        logger.warning("%s: %s", exc.code, exc)
+        # Upstream failures (502) keep their chained traceback in the log so the
+        # provider's own status/message is visible; user-input failures do not.
+        upstream_failure = exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR
+        logger.warning("%s: %s", exc.code, exc, exc_info=upstream_failure)
         return Response(
             {"error": {"code": exc.code, "message": str(exc)}}, status=exc.status_code
         )

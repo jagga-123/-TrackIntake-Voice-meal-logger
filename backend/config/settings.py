@@ -144,10 +144,14 @@ VOICE_MEAL = {
     "WHISPER_MODEL": os.getenv("WHISPER_MODEL", "base"),
     "WHISPER_DEVICE": os.getenv("WHISPER_DEVICE", "cpu"),
     "WHISPER_COMPUTE_TYPE": os.getenv("WHISPER_COMPUTE_TYPE", "int8"),
+    # "auto" picks the first provider below that has a key; or name one explicitly.
+    "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "auto"),
     "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", ""),
     "ANTHROPIC_MODEL": os.getenv("ANTHROPIC_MODEL", "claude-opus-5"),
     "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
     "OPENAI_MODEL": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+    "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
+    "GEMINI_MODEL": os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
     "LLM_TIMEOUT_SECONDS": float(os.getenv("LLM_TIMEOUT_SECONDS", "60")),
     "MAX_AUDIO_BYTES": int(os.getenv("MAX_AUDIO_BYTES", str(10 * 1024 * 1024))),
 }

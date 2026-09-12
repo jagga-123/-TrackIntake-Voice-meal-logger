@@ -1,8 +1,9 @@
 """LLM-backed extraction of structured meal data from free-form transcripts.
 
 The parser is provider-agnostic: anything satisfying :class:`LLMClient` can be
-injected. Production uses Anthropic Claude, falling back to OpenAI when only
-that key is configured; tests inject a scripted client so they stay hermetic.
+injected. Three providers ship out of the box (Anthropic Claude, OpenAI, Google
+Gemini), chosen by :func:`build_llm_client` from settings; tests inject a
+scripted client so they stay hermetic.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 from typing import Any, Literal, Protocol, TypedDict
 
 from django.conf import settings
@@ -112,6 +114,13 @@ UNIT_ALIASES: dict[str, Unit] = {
 }
 
 _CODE_FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
+
+
+def _describe_api_error(provider: str, exc: Exception) -> str:
+    """One-line summary of a provider SDK error, including the HTTP status when known."""
+    http_status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    suffix = f" {http_status}" if isinstance(http_status, int) else ""
+    return f"{provider} request failed ({type(exc).__name__}{suffix})."
 
 
 class ChatMessage(TypedDict):
@@ -233,7 +242,7 @@ class AnthropicLLMClient:
                 output_config={"format": {"type": "json_schema", "schema": MEAL_JSON_SCHEMA}},
             )
         except self._sdk.APIError as exc:
-            raise LLMUnavailableError(f"Anthropic request failed ({type(exc).__name__}).") from exc
+            raise LLMUnavailableError(_describe_api_error("Anthropic", exc)) from exc
 
         if response.stop_reason == "refusal":
             raise MealParseError("The model declined to process this transcript.")
@@ -262,24 +271,90 @@ class OpenAILLMClient:
                 max_completion_tokens=MAX_OUTPUT_TOKENS,
             )
         except self._sdk.APIError as exc:
-            raise LLMUnavailableError(f"OpenAI request failed ({type(exc).__name__}).") from exc
+            raise LLMUnavailableError(_describe_api_error("OpenAI", exc)) from exc
         return response.choices[0].message.content or ""
 
 
+class GeminiLLMClient:
+    """Chat completion through the official ``google-genai`` SDK with a JSON schema."""
+
+    provider = "gemini"
+
+    def __init__(self, api_key: str, model: str, timeout: float = 60.0) -> None:
+        from google import genai  # deferred so other deployments need no Google SDK
+        from google.genai import errors, types
+
+        self._errors = errors
+        self._types = types
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=int(timeout * 1000)),  # milliseconds
+        )
+        self.model = model
+
+    def complete(self, system: str, messages: list[ChatMessage]) -> str:
+        """Call Gemini with the meal schema enforced via ``response_json_schema``."""
+        types = self._types
+        contents = [
+            types.Content(
+                # Gemini names the assistant turn "model".
+                role="model" if message["role"] == "assistant" else "user",
+                parts=[types.Part.from_text(text=message["content"])],
+            )
+            for message in messages
+        ]
+        try:
+            response = self._client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    response_mime_type="application/json",
+                    response_json_schema=MEAL_JSON_SCHEMA,
+                ),
+            )
+        except self._errors.APIError as exc:
+            raise LLMUnavailableError(_describe_api_error("Gemini", exc)) from exc
+        return response.text or ""
+
+
+# Provider name → (API-key setting, model setting, client factory). Dict order is
+# the priority used when LLM_PROVIDER is "auto".
+PROVIDER_REGISTRY: dict[str, tuple[str, str, Callable[[str, str, float], LLMClient]]] = {
+    "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", AnthropicLLMClient),
+    "openai": ("OPENAI_API_KEY", "OPENAI_MODEL", OpenAILLMClient),
+    "gemini": ("GEMINI_API_KEY", "GEMINI_MODEL", GeminiLLMClient),
+}
+
+
 def build_llm_client() -> LLMClient:
-    """Instantiate the configured provider, preferring Anthropic over OpenAI.
+    """Instantiate the LLM provider selected by settings.
+
+    ``LLM_PROVIDER`` may name a provider explicitly; ``auto`` (the default) uses
+    the first entry of :data:`PROVIDER_REGISTRY` that has an API key.
 
     Raises:
-        LLMUnavailableError: when neither provider has an API key configured.
+        LLMUnavailableError: when the provider is unknown or has no API key.
     """
     config = settings.VOICE_MEAL
-    timeout = config["LLM_TIMEOUT_SECONDS"]
-    if config["ANTHROPIC_API_KEY"]:
-        return AnthropicLLMClient(config["ANTHROPIC_API_KEY"], config["ANTHROPIC_MODEL"], timeout)
-    if config["OPENAI_API_KEY"]:
-        return OpenAILLMClient(config["OPENAI_API_KEY"], config["OPENAI_MODEL"], timeout)
+    requested = str(config["LLM_PROVIDER"]).strip().lower()
+    if requested == "auto":
+        candidates = list(PROVIDER_REGISTRY)
+    elif requested in PROVIDER_REGISTRY:
+        candidates = [requested]
+    else:
+        raise LLMUnavailableError(
+            f"Unknown LLM_PROVIDER {requested!r}; expected auto, anthropic, openai or gemini."
+        )
+
+    for name in candidates:
+        key_setting, model_setting, factory = PROVIDER_REGISTRY[name]
+        if config[key_setting]:
+            logger.info("Using LLM provider %s (%s)", name, config[model_setting])
+            return factory(config[key_setting], config[model_setting], config["LLM_TIMEOUT_SECONDS"])
+
     raise LLMUnavailableError(
-        "No LLM provider configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY."
+        "No LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY."
     )
 
 

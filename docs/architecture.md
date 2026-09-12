@@ -7,7 +7,7 @@
 | `useVoiceRecorder` (React)     | MediaRecorder state machine: idle → recording → processing; permission errors   |
 | `VoiceMealPreviewView`         | Validates the upload (size, container signature) and runs the pipeline          |
 | `Transcriber`                  | faster-whisper `base`, auto language detection, lazy model load, domain prompt  |
-| `MealParser`                   | LLM call with JSON-schema output, pydantic validation, one repair retry          |
+| `MealParser`                   | LLM call (Claude, OpenAI or Gemini) with JSON-schema output, pydantic validation, one repair retry |
 | `NutritionLookup`              | Curated table match + portion scaling; falls back to the LLM's estimate         |
 | `VoiceMealPipeline`            | Chains the three services and shapes the preview dict                           |
 | `MealPreviewCard` (React)      | Editable table, live totals, provenance badges, confirm / re-record             |
@@ -22,7 +22,7 @@ sequenceDiagram
     participant FE as React app
     participant API as Django / DRF
     participant W as Whisper
-    participant LLM as Claude (or OpenAI)
+    participant LLM as LLM (Claude / OpenAI / Gemini)
     participant NT as Nutrition table
     participant DB as Database
 
