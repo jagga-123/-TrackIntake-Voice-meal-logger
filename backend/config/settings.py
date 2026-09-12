@@ -51,6 +51,23 @@ DEBUG = env_bool("DJANGO_DEBUG", default=True)
 SECRET_KEY = resolve_secret_key(DEBUG)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 
+# Render injects the service's public hostname at runtime. Trusting it here means
+# a deploy works without anyone hand-copying the domain into an env var.
+RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
+# Django rejects cross-origin POSTs (such as the admin login form) over HTTPS
+# unless the origin is listed here.
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
+if RENDER_EXTERNAL_HOSTNAME:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
+
+# TLS terminates at Render's edge, so the original scheme arrives in a header.
+# Without this Django believes every request is plain HTTP.
+if os.getenv("RENDER"):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

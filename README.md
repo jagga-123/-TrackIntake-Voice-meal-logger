@@ -81,6 +81,43 @@ Sign in with the user you created, tap the microphone, speak, review, confirm.
 
 ---
 
+## Deployment
+
+The backend needs a persistent server (Whisper loads a model into memory and
+transcription takes seconds), so it runs as a normal web service rather than on
+serverless functions. The frontend is a static bundle and can go on any CDN.
+
+**Backend — Render web service**
+
+| Setting | Value |
+| --- | --- |
+| Root directory | `backend` |
+| Build command | `pip install -r requirements.txt && python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"` |
+| Start command | `python manage.py migrate --no-input && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 180` |
+
+Downloading the Whisper checkpoint during the build bakes it into the image, so
+a cold start does not re-fetch 145 MB. The long gunicorn timeout matters because
+transcription on a shared CPU is far slower than on a laptop.
+
+Required environment variables: `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`,
+`CORS_ALLOWED_ORIGINS` (the frontend URL), `GEMINI_API_KEY`, and
+`WHISPER_MODEL=base` on small instances. `DJANGO_ALLOWED_HOSTS` is optional on
+Render because `RENDER_EXTERNAL_HOSTNAME` is trusted automatically.
+
+**Frontend — Vercel**
+
+Set the project root directory to `frontend`; Vercel then detects Vite and needs
+no `vercel.json`. Add `VITE_API_BASE_URL` pointing at the backend, including the
+`/api/v1` suffix. The variable is read at build time, so changing it requires a
+redeploy.
+
+**Free-tier caveats.** A free Render instance sleeps after inactivity and takes
+roughly a minute to wake, and its SQLite file is recreated on every deploy, so
+accounts and logged meals do not survive. Both are fine for a demo; a paid
+instance with a managed Postgres database fixes them.
+
+---
+
 ## API reference
 
 All endpoints live under `/api/v1/`. Authentication is a JWT bearer token.
