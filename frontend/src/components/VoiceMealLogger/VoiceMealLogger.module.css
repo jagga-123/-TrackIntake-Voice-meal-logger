@@ -318,6 +318,11 @@
   min-width: 150px;
 }
 
+/* Wide enough for the longest unit label ("piece") plus the dropdown arrow. */
+.table select {
+  min-width: 96px;
+}
+
 .table input:focus,
 .table select:focus {
   outline: none;

@@ -54,6 +54,11 @@ The first voice request downloads the Whisper `base` checkpoint (~145 MB) from
 Hugging Face and caches it locally. Audio decoding uses PyAV, which ships its own
 FFmpeg, so no system FFmpeg install is required.
 
+> **Tip:** `base` is fast but mis-hears some Hinglish food words. Setting
+> `WHISPER_MODEL=small` in `.env` (~460 MB, a few seconds slower per clip) is
+> noticeably more accurate on Hindi and Hinglish. Restart the server after
+> changing it.
+
 Run the tests:
 
 ```bash
