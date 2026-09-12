@@ -5,6 +5,9 @@ djangorestframework-simplejwt>=5.3
 django-cors-headers>=4.4
 python-dotenv>=1.0
 
+# Production WSGI server (used by the Render start command)
+gunicorn>=23.0
+
 # Voice → text
 faster-whisper>=1.0
 
