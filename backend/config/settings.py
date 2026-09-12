@@ -32,6 +32,17 @@ def env_list(name: str, default: str) -> list[str]:
     return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
+def env_origins(name: str, default: str) -> list[str]:
+    """Read a comma-separated list of origins, dropping any trailing slash.
+
+    An Origin never carries a path, and ``django-cors-headers`` refuses to start
+    when one is configured with a trailing slash. Copying a deployment URL out of
+    a browser address bar includes that slash, so normalise it here rather than
+    failing the deploy.
+    """
+    return [origin.rstrip("/") for origin in env_list(name, default)]
+
+
 def resolve_secret_key(debug: bool) -> str:
     """Return the Django secret key, refusing to start without one outside DEBUG.
 
@@ -59,7 +70,7 @@ if RENDER_EXTERNAL_HOSTNAME:
 
 # Django rejects cross-origin POSTs (such as the admin login form) over HTTPS
 # unless the origin is listed here.
-CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
+CSRF_TRUSTED_ORIGINS = env_origins("CSRF_TRUSTED_ORIGINS", "")
 if RENDER_EXTERNAL_HOSTNAME:
     CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
 
@@ -151,7 +162,7 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-CORS_ALLOWED_ORIGINS = env_list(
+CORS_ALLOWED_ORIGINS = env_origins(
     "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
 )
 
