@@ -39,11 +39,20 @@ class TranscriptionResult(TypedDict):
 class Transcriber:
     """Transcribe short audio clips with automatic language detection.
 
+    Every knob below trades accuracy for speed, which matters because a small
+    shared vCPU is one to two orders of magnitude slower than a laptop.
+
     Args:
         model_size: Whisper checkpoint name (``tiny``, ``base``, ``small`` ...).
         device: ``cpu`` or ``cuda``.
         compute_type: CTranslate2 quantisation, ``int8`` is the CPU sweet spot.
-        beam_size: Decoding beam width; 5 is Whisper's default.
+        beam_size: Decoding beam width. 5 is Whisper's default; 1 (greedy) is
+            several times faster and usually enough for short meal phrases.
+        cpu_threads: Worker threads for CTranslate2. 0 lets it choose, which on a
+            throttled container means it sees every host core and spawns threads
+            that only fight each other; pin it to 1 there.
+        vad_filter: Trim silence before decoding. Improves accuracy on long clips
+            but loads an extra ONNX model, which costs memory on tiny instances.
         initial_prompt: Context text that biases decoding towards the meal domain.
     """
 
@@ -53,12 +62,16 @@ class Transcriber:
         device: str = "cpu",
         compute_type: str = "int8",
         beam_size: int = 5,
+        cpu_threads: int = 0,
+        vad_filter: bool = True,
         initial_prompt: str = DEFAULT_INITIAL_PROMPT,
     ) -> None:
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type
         self.beam_size = beam_size
+        self.cpu_threads = cpu_threads
+        self.vad_filter = vad_filter
         self.initial_prompt = initial_prompt
 
     @cached_property
@@ -66,10 +79,16 @@ class Transcriber:
         """Load (and on first use download) the Whisper checkpoint."""
         from faster_whisper import WhisperModel  # heavy import deferred to first use
 
-        logger.info("Loading faster-whisper model '%s' on %s", self.model_size, self.device)
+        logger.info(
+            "Loading faster-whisper model '%s' on %s (threads=%s)",
+            self.model_size, self.device, self.cpu_threads or "auto",
+        )
         try:
             return WhisperModel(
-                self.model_size, device=self.device, compute_type=self.compute_type
+                self.model_size,
+                device=self.device,
+                compute_type=self.compute_type,
+                cpu_threads=self.cpu_threads,
             )
         except Exception as exc:  # model download / CTranslate2 init can fail many ways
             raise TranscriptionError(f"Could not load Whisper model '{self.model_size}'.") from exc
@@ -88,7 +107,7 @@ class Transcriber:
             segments, info = self.model.transcribe(
                 source,
                 beam_size=self.beam_size,
-                vad_filter=True,
+                vad_filter=self.vad_filter,
                 initial_prompt=self.initial_prompt,
             )
             text = " ".join(segment.text.strip() for segment in segments).strip()

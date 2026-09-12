@@ -152,6 +152,9 @@ def build_pipeline() -> VoiceMealPipeline:
         model_size=config["WHISPER_MODEL"],
         device=config["WHISPER_DEVICE"],
         compute_type=config["WHISPER_COMPUTE_TYPE"],
+        beam_size=config["WHISPER_BEAM_SIZE"],
+        cpu_threads=config["WHISPER_CPU_THREADS"],
+        vad_filter=config["WHISPER_VAD_FILTER"],
     )
     return VoiceMealPipeline(
         transcriber=transcriber,

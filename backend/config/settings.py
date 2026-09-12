@@ -172,6 +172,9 @@ VOICE_MEAL = {
     "WHISPER_MODEL": os.getenv("WHISPER_MODEL", "base"),
     "WHISPER_DEVICE": os.getenv("WHISPER_DEVICE", "cpu"),
     "WHISPER_COMPUTE_TYPE": os.getenv("WHISPER_COMPUTE_TYPE", "int8"),
+    "WHISPER_BEAM_SIZE": int(os.getenv("WHISPER_BEAM_SIZE", "5")),
+    "WHISPER_CPU_THREADS": int(os.getenv("WHISPER_CPU_THREADS", "0")),
+    "WHISPER_VAD_FILTER": env_bool("WHISPER_VAD_FILTER", default=True),
     # "auto" picks the first provider below that has a key; or name one explicitly.
     "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "auto"),
     "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),

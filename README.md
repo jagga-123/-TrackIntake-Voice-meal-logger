@@ -93,16 +93,34 @@ serverless functions. The frontend is a static bundle and can go on any CDN.
 | --- | --- |
 | Root directory | `backend` |
 | Build command | `pip install -r requirements.txt && python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"` |
-| Start command | `python manage.py migrate --no-input && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 180` |
+| Start command | `python manage.py migrate --no-input && python manage.py warm_whisper --ignore-errors && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 300` |
 
-Downloading the Whisper checkpoint during the build bakes it into the image, so
-a cold start does not re-fetch 145 MB. The long gunicorn timeout matters because
-transcription on a shared CPU is far slower than on a laptop.
+Downloading the Whisper checkpoint during the build bakes it into the image, and
+`warm_whisper` loads it into memory before traffic arrives, so no user request
+pays either cost. The long gunicorn timeout matters because transcription on a
+shared CPU is far slower than on a laptop.
 
 Required environment variables: `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`,
-`CORS_ALLOWED_ORIGINS` (the frontend URL), `GEMINI_API_KEY`, and
-`WHISPER_MODEL=base` on small instances. `DJANGO_ALLOWED_HOSTS` is optional on
-Render because `RENDER_EXTERNAL_HOSTNAME` is trusted automatically.
+`CORS_ALLOWED_ORIGINS` (the frontend URL), and `GEMINI_API_KEY`.
+`DJANGO_ALLOWED_HOSTS` is optional on Render because `RENDER_EXTERNAL_HOSTNAME`
+is trusted automatically.
+
+**Sizing the instance.** Transcription is CPU-bound, and the wall-clock cost is
+roughly the CPU cost divided by the fraction of a core the plan grants. Measured
+on a 3.5-second clip:
+
+| Settings | CPU seconds |
+| --- | --- |
+| `base`, beam 5, VAD on | 10.4 |
+| `tiny`, beam 1, VAD off | 6.4 |
+
+On a 0.1-CPU instance that is roughly 104 s and 64 s of waiting respectively,
+which is slow enough that a proxy or client may give up first. Either run the
+low-cost settings (`WHISPER_MODEL=tiny`, `WHISPER_BEAM_SIZE=1`,
+`WHISPER_CPU_THREADS=1`, `WHISPER_VAD_FILTER=false`) or use an instance with at
+least half a core, where the default settings answer in about twenty seconds.
+`WHISPER_CPU_THREADS=1` matters on any throttled container: left on auto,
+CTranslate2 spawns one thread per host core and they contend for a sliver of CPU.
 
 **Frontend — Vercel**
 
