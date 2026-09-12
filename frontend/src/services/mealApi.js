@@ -15,9 +15,15 @@ export const UNAUTHORIZED_EVENT = 'trackintake:unauthorized';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  // Whisper + LLM can take a while on CPU; do not cut the preview call short.
-  timeout: 120_000,
+  timeout: 30_000,
 });
+
+/**
+ * The preview call runs speech-to-text and an LLM round-trip server-side. On a
+ * small shared instance the first one also pays for waking the server and
+ * loading the Whisper model, so it gets a far longer budget than other calls.
+ */
+const PREVIEW_TIMEOUT_MS = 300_000;
 
 // --- Interceptors ------------------------------------------------------------
 
@@ -111,7 +117,9 @@ function extensionFor(mimeType) {
 export async function previewVoiceMeal(audioBlob) {
   const form = new FormData();
   form.append('audio', audioBlob, `recording.${extensionFor(audioBlob.type)}`);
-  const { data } = await api.post('/meal-log/voice/preview/', form);
+  const { data } = await api.post('/meal-log/voice/preview/', form, {
+    timeout: PREVIEW_TIMEOUT_MS,
+  });
   return data;
 }
 
@@ -153,10 +161,12 @@ function firstDetail(details) {
  * @param {string} [fallback]
  */
 export function getApiErrorMessage(error, fallback = 'Something went wrong. Please try again.') {
+  // No response at all: a timeout, a dropped connection, or a proxy error whose
+  // response carries no CORS headers. The browser cannot tell us which.
   if (!error?.response) {
     return error?.code === 'ECONNABORTED'
-      ? 'The request timed out. Please try a shorter recording.'
-      : 'Cannot reach the server. Is the backend running?';
+      ? 'The server took too long to answer. Try a shorter recording, then try again.'
+      : 'Lost contact with the server. It may still be waking up, so please try again in a moment.';
   }
   const body = error.response.data?.error;
   if (!body) return fallback;
