@@ -93,7 +93,12 @@ serverless functions. The frontend is a static bundle and can go on any CDN.
 | --- | --- |
 | Root directory | `backend` |
 | Build command | `pip install -r requirements.txt && python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"` |
-| Start command | `python manage.py migrate --no-input && python manage.py warm_whisper --ignore-errors && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 300` |
+| Start command | `python manage.py migrate --no-input && python manage.py ensure_superuser && python manage.py warm_whisper --ignore-errors && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 300` |
+
+`ensure_superuser` reads the `DJANGO_SUPERUSER_USERNAME`, `_PASSWORD` and
+`_EMAIL` variables and creates or updates that account on every boot. Unlike
+`createsuperuser --noinput`, which refuses to touch an existing account, this
+means rotating the demo password is just an environment-variable change.
 
 Downloading the Whisper checkpoint during the build bakes it into the image, and
 `warm_whisper` loads it into memory before traffic arrives, so no user request
