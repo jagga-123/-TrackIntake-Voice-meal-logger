@@ -15,7 +15,9 @@ export const UNAUTHORIZED_EVENT = 'trackintake:unauthorized';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30_000,
+  // A sleeping free-tier instance can take a minute to accept its first request,
+  // so even a trivial call needs a generous budget.
+  timeout: 120_000,
 });
 
 /**
