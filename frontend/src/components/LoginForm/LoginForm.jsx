@@ -42,6 +42,12 @@ export default function LoginForm({ onSuccess }) {
         <input
           type="text"
           autoComplete="username"
+          // Without these, mobile keyboards auto-capitalise the first letter
+          // and may autocorrect it, silently turning "demo" into "Demo" as
+          // you type - the login then fails with a password that is correct.
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           value={username}
           onChange={(event) => setUsername(event.target.value)}
           required
