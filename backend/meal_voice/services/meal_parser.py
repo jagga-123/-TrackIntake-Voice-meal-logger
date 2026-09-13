@@ -258,7 +258,16 @@ class GeminiLLMClient:
         self._types = types
         self._client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(timeout=int(timeout * 1000)),  # milliseconds
+            http_options=types.HttpOptions(
+                timeout=int(timeout * 1000),  # milliseconds
+                # The SDK never retries unless retry_options is set explicitly -
+                # omitting it (the previous behaviour) turns every transient 429
+                # or 5xx from Google's side into a hard failure on the first try.
+                # Bounded to keep worst case well inside LLM_TIMEOUT_SECONDS.
+                retry_options=types.HttpRetryOptions(
+                    attempts=3, initial_delay=1.0, max_delay=8.0, exp_base=2.0
+                ),
+            ),
         )
         self.model = model
 

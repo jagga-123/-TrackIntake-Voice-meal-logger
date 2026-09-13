@@ -251,3 +251,22 @@ def test_build_llm_client_rejects_unknown_provider(settings: Any) -> None:
 
     with pytest.raises(LLMUnavailableError, match="Unknown LLM_PROVIDER"):
         build_llm_client()
+
+
+# --- Gemini transport resilience --------------------------------------------
+# Regression test for a live incident: Google's API returned a transient 503
+# and, because the SDK never retries unless retry_options is set explicitly,
+# that single blip surfaced straight to the user as a hard failure.
+
+
+def test_gemini_client_configures_retries_for_transient_failures() -> None:
+    client = GeminiLLMClient(api_key="fake-key", model="gemini-3.5-flash")
+
+    retry_options = client._client._api_client._http_options.retry_options
+
+    assert retry_options is not None, (
+        "GeminiLLMClient must set retry_options explicitly - the SDK's own "
+        "default (unset) means zero retries, so a single transient 429/5xx "
+        "from Google reaches the user as a hard failure."
+    )
+    assert retry_options.attempts is not None and retry_options.attempts > 1
