@@ -11,6 +11,7 @@ import styles from './LoginForm.module.css';
 export default function LoginForm({ onSuccess }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -19,7 +20,10 @@ export default function LoginForm({ onSuccess }) {
     setSubmitting(true);
     setError(null);
     try {
-      await login(username.trim(), password);
+      // A mobile keyboard's suggestion bar can leave a trailing space, and the
+      // password field is masked, so that space is invisible until it breaks
+      // sign-in. There is no legitimate reason a password needs one here.
+      await login(username.trim(), password.trim());
       onSuccess();
     } catch (requestError) {
       setError(
@@ -56,13 +60,25 @@ export default function LoginForm({ onSuccess }) {
 
       <label className={styles.field}>
         <span>Password</span>
-        <input
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
+        <div className={styles.passwordRow}>
+          <input
+            type={showPassword ? 'text' : 'password'}
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+          <button
+            type="button"
+            className={styles.toggleVisibility}
+            onClick={() => setShowPassword((visible) => !visible)}
+            // A saved or autofilled password can silently differ from what you
+            // think you typed, especially on a phone - this lets you check.
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+          >
+            {showPassword ? 'Hide' : 'Show'}
+          </button>
+        </div>
       </label>
 
       {error && (
