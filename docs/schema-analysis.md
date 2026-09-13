@@ -19,9 +19,12 @@ implies and adds only what the voice pipeline needs to explain itself.
 
 ## Assumed models
 
+The store is MongoDB, so `id` is an `ObjectId` rather than a relational
+auto-increment integer; every other field is unaffected by that choice.
+
 ```text
 MealLog
-├── id            bigint PK
+├── id            ObjectId PK
 ├── user          FK → auth user
 ├── meal_type     enum  breakfast | lunch | dinner | snack
 ├── logged_at     datetime (when the meal was eaten; defaults to now)
@@ -31,7 +34,7 @@ MealLog
 └── created_at    datetime
 
 MealItem
-├── id                bigint PK
+├── id                ObjectId PK
 ├── meal_log          FK → MealLog (related_name="items")
 ├── name              varchar(120)   normalised food name
 ├── original_text     varchar(255)   verbatim phrase from the transcript

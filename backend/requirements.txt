@@ -8,6 +8,10 @@ python-dotenv>=1.0
 # Production WSGI server (used by the Render start command)
 gunicorn>=23.0
 
+# MongoDB. The connector's major version tracks the Django version it targets,
+# so this pin must move together with the Django pin above.
+django-mongodb-backend==5.2.4
+
 # Voice → text
 faster-whisper>=1.0
 
@@ -19,3 +23,4 @@ pydantic>=2.7
 # Tests
 pytest>=8.2
 pytest-django>=4.8
+pytest-env>=1.1
