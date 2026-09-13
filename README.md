@@ -92,23 +92,28 @@ serverless functions. The frontend is a static bundle and can go on any CDN.
 | Setting | Value |
 | --- | --- |
 | Root directory | `backend` |
-| Build command | `pip install -r requirements.txt && python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"` |
-| Start command | `python manage.py migrate --no-input && python manage.py ensure_superuser && python manage.py warm_whisper --ignore-errors && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 300` |
+| Build command | `pip install -r requirements.txt && python manage.py warm_whisper` |
+| Start command | `python manage.py migrate --no-input && python manage.py ensure_superuser && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 300` |
 
 `ensure_superuser` reads the `DJANGO_SUPERUSER_USERNAME`, `_PASSWORD` and
 `_EMAIL` variables and creates or updates that account on every boot. Unlike
 `createsuperuser --noinput`, which refuses to touch an existing account, this
 means rotating the demo password is just an environment-variable change.
 
-Downloading the Whisper checkpoint during the build bakes it into the image, and
-`warm_whisper` loads it into memory before traffic arrives, so no user request
-pays either cost. The long gunicorn timeout matters because transcription on a
-shared CPU is far slower than on a laptop.
+**Where the model load happens matters.** `warm_whisper` runs at build time so
+the checkpoint is baked into the image rather than downloaded on first use. It
+deliberately does **not** run in the start command: loading the model takes
+close to a minute on a throttled CPU, and doing that before the server binds its
+port delays every request on a cold instance, sign-in included. Instead,
+`WARM_MODELS_ON_STARTUP=true` loads it on a background thread once the worker is
+already accepting connections, so the port opens immediately and the model is
+usually ready by the time someone records. The long gunicorn timeout covers the
+case where it is not.
 
 Required environment variables: `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`,
-`CORS_ALLOWED_ORIGINS` (the frontend URL), and `GEMINI_API_KEY`.
-`DJANGO_ALLOWED_HOSTS` is optional on Render because `RENDER_EXTERNAL_HOSTNAME`
-is trusted automatically.
+`CORS_ALLOWED_ORIGINS` (the frontend URL), `GEMINI_API_KEY`, and
+`WARM_MODELS_ON_STARTUP=true`. `DJANGO_ALLOWED_HOSTS` is optional on Render
+because `RENDER_EXTERNAL_HOSTNAME` is trusted automatically.
 
 **Sizing the instance.** Transcription is CPU-bound, and the wall-clock cost is
 roughly the CPU cost divided by the fraction of a core the plan grants. Measured

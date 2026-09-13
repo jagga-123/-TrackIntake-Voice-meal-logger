@@ -11,3 +11,9 @@ class MealVoiceConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "meal_voice"
     verbose_name = "Voice meal ingestion"
+
+    def ready(self) -> None:
+        """Start warming the speech-to-text model once the app is loaded."""
+        from meal_voice.services.pipeline import start_background_warmup
+
+        start_background_warmup()

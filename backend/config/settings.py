@@ -175,6 +175,10 @@ VOICE_MEAL = {
     "WHISPER_BEAM_SIZE": int(os.getenv("WHISPER_BEAM_SIZE", "5")),
     "WHISPER_CPU_THREADS": int(os.getenv("WHISPER_CPU_THREADS", "0")),
     "WHISPER_VAD_FILTER": env_bool("WHISPER_VAD_FILTER", default=True),
+    # Load the model in a background thread once the HTTP server is already
+    # accepting connections. Doing it before the server binds delays every
+    # request on a cold instance, including sign-in.
+    "WARM_MODELS_ON_STARTUP": env_bool("WARM_MODELS_ON_STARTUP", default=False),
     # "auto" picks the first provider below that has a key; or name one explicitly.
     "LLM_PROVIDER": os.getenv("LLM_PROVIDER", "auto"),
     "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),

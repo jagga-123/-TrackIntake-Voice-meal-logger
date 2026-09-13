@@ -7,8 +7,11 @@ correct in the UI; persistence happens only through the confirm endpoint.
 from __future__ import annotations
 
 import logging
+import sys
+import threading
+import time
 from datetime import datetime
-from functools import lru_cache
+from pathlib import Path
 from typing import Any, Literal
 
 from django.conf import settings
@@ -121,6 +124,12 @@ class VoiceMealPipeline:
         )
         return preview.model_dump(mode="json")
 
+    def warm_up(self) -> float:
+        """Load the speech-to-text model, returning how many seconds it took."""
+        started = time.monotonic()
+        _ = self._transcriber.model  # cached_property: the access performs the load
+        return time.monotonic() - started
+
     def _enrich(self, item: ParsedItem, meal_confidence: float) -> PreviewItem:
         """Attach table-backed macros (when available) and a per-item confidence."""
         assert item.quantity is not None  # guaranteed by ParsedItem.apply_defaults
@@ -163,7 +172,62 @@ def build_pipeline() -> VoiceMealPipeline:
     )
 
 
-@lru_cache(maxsize=1)
+_pipeline: VoiceMealPipeline | None = None
+_pipeline_lock = threading.Lock()
+
+
 def get_pipeline() -> VoiceMealPipeline:
-    """Process-wide pipeline so the Whisper model is loaded once, not per request."""
-    return build_pipeline()
+    """Return the process-wide pipeline, building it at most once.
+
+    The lock matters because the warm-up thread and an early request can both
+    arrive before the model is loaded. Without it each would build its own
+    pipeline and load a second copy of the model, doubling memory on exactly the
+    small instances this is meant to help.
+    """
+    global _pipeline
+    if _pipeline is None:
+        with _pipeline_lock:
+            if _pipeline is None:
+                _pipeline = build_pipeline()
+    return _pipeline
+
+
+def serves_http() -> bool:
+    """True for a web server process, false for one-off management commands.
+
+    Warm-up is pointless in a process that exits straight away, and on a
+    throttled container it steals CPU from the migrate step that follows.
+    """
+    program = Path(sys.argv[0]).name if sys.argv else ""
+    if "gunicorn" in program:
+        return True
+    return len(sys.argv) > 1 and sys.argv[1] == "runserver"
+
+
+def start_background_warmup() -> threading.Thread | None:
+    """Begin loading the model in a daemon thread, returning it when started.
+
+    Called from app startup. Warming here rather than before the server binds
+    means a cold instance can answer sign-in immediately while the model loads.
+    Returns ``None`` when warm-up is disabled or this process serves no traffic.
+    """
+    if not settings.VOICE_MEAL["WARM_MODELS_ON_STARTUP"] or not serves_http():
+        return None
+    thread = threading.Thread(target=_warm_quietly, name="whisper-warmup", daemon=True)
+    thread.start()
+    return thread
+
+
+def _warm_quietly() -> None:
+    """Warm the pipeline, logging any failure instead of raising.
+
+    This runs on a background thread with nobody to catch an exception, and a
+    failed warm-up is not fatal: the next request simply pays the load cost and
+    reports a proper error if the model is genuinely unavailable.
+    """
+    try:
+        logger.info("Warming the voice pipeline in the background")
+        elapsed = get_pipeline().warm_up()
+        logger.info("Voice pipeline warm after %.1fs", elapsed)
+    except Exception:  # noqa: BLE001 - a background thread must never crash the worker
+        logger.warning("Background warm-up failed; the first request will pay for it.", exc_info=True)
