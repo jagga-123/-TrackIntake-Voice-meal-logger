@@ -7,9 +7,9 @@ and save it as a meal log. Built as an internship assignment for
 
 | Layer    | Stack                                                                  |
 | -------- | ---------------------------------------------------------------------- |
-| Backend  | Django 5 · Django REST Framework · SimpleJWT · faster-whisper · Google Gemini (OpenAI fallback) · pydantic |
+| Backend  | Django 5 · Django REST Framework · SimpleJWT · MongoDB Atlas · faster-whisper · Google Gemini (OpenAI fallback) · pydantic |
 | Frontend | React 18 · Vite · plain CSS Modules · axios · MediaRecorder API        |
-| Tests    | pytest + pytest-django (95 tests, no network or model downloads needed) |
+| Tests    | pytest + pytest-django (144 tests against a local MongoDB, no LLM or model downloads needed) |
 
 ---
 
@@ -44,11 +44,15 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate            # Windows   (macOS/Linux: source .venv/bin/activate)
 pip install -r requirements.txt
-copy .env.example .env            # then set GEMINI_API_KEY (or OPENAI_API_KEY)
+copy .env.example .env            # then set MONGODB_URI and GEMINI_API_KEY (or OPENAI_API_KEY)
 python manage.py migrate
 python manage.py createsuperuser  # any user can log meals; superuser also gets /admin/
 python manage.py runserver
 ```
+
+`MONGODB_URI` needs a real MongoDB — a free
+[Atlas](https://www.mongodb.com/cloud/atlas) cluster or a local `mongod` both
+work; see **Database (MongoDB)** below for why there is no SQLite fallback.
 
 The first voice request downloads the Whisper `base` checkpoint (~145 MB) from
 Hugging Face and caches it locally. Audio decoding uses PyAV, which ships its own
@@ -59,9 +63,11 @@ FFmpeg, so no system FFmpeg install is required.
 > noticeably more accurate on Hindi and Hinglish. Restart the server after
 > changing it.
 
-Run the tests:
+Run the tests (needs a disposable local MongoDB — see **Testing against
+MongoDB** below for why this can't just reuse `MONGODB_URI`):
 
 ```bash
+docker run -d --name trackintake-test-mongo -p 27117:27017 mongo:7
 python -m pytest
 ```
 
@@ -111,9 +117,10 @@ usually ready by the time someone records. The long gunicorn timeout covers the
 case where it is not.
 
 Required environment variables: `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`,
-`CORS_ALLOWED_ORIGINS` (the frontend URL), `GEMINI_API_KEY`, and
-`WARM_MODELS_ON_STARTUP=true`. `DJANGO_ALLOWED_HOSTS` is optional on Render
-because `RENDER_EXTERNAL_HOSTNAME` is trusted automatically.
+`CORS_ALLOWED_ORIGINS` (the frontend URL), `MONGODB_URI` (see **Database
+(MongoDB)** below), `GEMINI_API_KEY`, and `WARM_MODELS_ON_STARTUP=true`.
+`DJANGO_ALLOWED_HOSTS` is optional on Render because `RENDER_EXTERNAL_HOSTNAME`
+is trusted automatically.
 
 **Sizing the instance.** Transcription is CPU-bound, and the wall-clock cost is
 roughly the CPU cost divided by the fraction of a core the plan grants. Measured
@@ -140,9 +147,63 @@ no `vercel.json`. Add `VITE_API_BASE_URL` pointing at the backend, including the
 redeploy.
 
 **Free-tier caveats.** A free Render instance sleeps after inactivity and takes
-roughly a minute to wake, and its SQLite file is recreated on every deploy, so
-accounts and logged meals do not survive. Both are fine for a demo; a paid
-instance with a managed Postgres database fixes them.
+roughly a minute to wake. Data itself now survives: MongoDB Atlas is a separate
+service from the web instance, so accounts and logged meals persist across
+deploys and restarts — only the sleep/wake delay remains.
+
+---
+
+## Database (MongoDB)
+
+MongoDB is the only supported database; there is no SQLite fallback. That is a
+consequence of the primary key type, not a style preference: MongoDB has no
+integer auto-increment field, so `django-mongodb-backend` gives every model an
+`ObjectIdAutoField` primary key, and that field only knows how to generate
+values MongoDB understands — it cannot fall back to SQLite's `AUTOINCREMENT`.
+`django.contrib.admin`, `auth` and `contenttypes` ship migrations that assume
+an integer primary key, so this project points them at project-local
+replacements under `config/mongo_migrations/` (via `MIGRATION_MODULES`) and
+`config/apps.py` (three `AppConfig` subclasses that request an
+`ObjectIdAutoField` instead of Django's default).
+
+**Local setup:** create a free [Atlas](https://www.mongodb.com/cloud/atlas)
+cluster, add a database user under *Database Access*, allow your IP under
+*Network Access*, then copy the connection string from *Connect → Drivers*
+into `MONGODB_URI` in `.env`. `MONGODB_NAME` picks the database on that
+cluster, so several projects can share one free cluster without colliding.
+
+**Adapting the confirm/list serializers if you fork this:** `MealLogSerializer`
+and `MealItemSerializer` declare `id = serializers.CharField(read_only=True)`
+explicitly. DRF's `ModelSerializer` guesses a primary key's type from the model
+field, has no notion of `ObjectIdAutoField`, and falls back to `IntegerField` —
+which raises `TypeError` the moment it tries to render a 24-character hex
+string as an int. Any new serializer exposing a model's `id` needs the same
+override.
+
+### Testing against MongoDB
+
+`django-mongodb-backend` 5.2.4 reports `supports_transactions = False`
+unconditionally (see its `features.py`), so `django.db.transaction.atomic()` is
+a no-op on this backend. Without real transactions, `pytest-django` cannot wrap
+each test in a rollback, so it falls back to Django's `TransactionTestCase`
+behaviour: a full collection flush after every single database test. Against a
+local database that flush is fast; against a shared cluster on the other side
+of the internet, it is a network round trip per test, and multiplied across
+144 tests it measured in the tens of minutes and, once, hung outright.
+
+The fix is the standard one for this situation: **point tests at a disposable
+local MongoDB instead of Atlas.** `pytest.ini` uses `pytest-env` to override
+`MONGODB_URI`/`MONGODB_NAME` for `pytest` runs only — `.env` (and therefore
+`runserver` and every deployment) is untouched and keeps talking to Atlas.
+Start the local instance once with:
+
+```bash
+docker run -d --name trackintake-test-mongo -p 27117:27017 mongo:7
+```
+
+and leave it running; `python -m pytest` finds it automatically. Whether it
+runs standalone or as a replica set makes no difference here, since
+`supports_transactions` is hardcoded false either way.
 
 ---
 

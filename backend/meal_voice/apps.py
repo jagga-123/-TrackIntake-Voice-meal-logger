@@ -8,7 +8,7 @@ from django.apps import AppConfig
 class MealVoiceConfig(AppConfig):
     """App config for ``meal_voice``."""
 
-    default_auto_field = "django.db.models.BigAutoField"
+    default_auto_field = "django_mongodb_backend.fields.ObjectIdAutoField"
     name = "meal_voice"
     verbose_name = "Voice meal ingestion"
 

@@ -110,6 +110,11 @@ class ConfirmMealSerializer(serializers.Serializer):
 class MealItemSerializer(serializers.ModelSerializer):
     """Read-only representation of a stored meal item."""
 
+    # MongoDB primary keys are ObjectIds; DRF's auto-generated field guesses
+    # IntegerField for "id" and raises TypeError on write. Declaring it
+    # explicitly renders the id as its 24-character hex string.
+    id = serializers.CharField(read_only=True)
+
     class Meta:
         model = MealItem
         fields = (
@@ -129,6 +134,8 @@ class MealItemSerializer(serializers.ModelSerializer):
 class MealLogSerializer(serializers.ModelSerializer):
     """Read-only representation of a stored meal log with nested items."""
 
+    # See MealItemSerializer.id: MongoDB primary keys are ObjectIds, not integers.
+    id = serializers.CharField(read_only=True)
     items = MealItemSerializer(many=True, read_only=True)
 
     class Meta:

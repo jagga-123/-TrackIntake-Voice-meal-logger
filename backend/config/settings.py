@@ -80,9 +80,11 @@ if os.getenv("RENDER"):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
+    # These three replace the stock contrib apps so their models get ObjectId
+    # primary keys; see config/apps.py.
+    "config.apps.MongoAdminConfig",
+    "config.apps.MongoAuthConfig",
+    "config.apps.MongoContentTypesConfig",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
@@ -120,11 +122,37 @@ TEMPLATES = [
     },
 ]
 
+# --- Database ----------------------------------------------------------------
+# MongoDB is the system of record. Every model's primary key is therefore an
+# ObjectId rather than an integer, which the connector cannot emulate on other
+# engines, so there is no SQLite fallback: a MONGODB_URI is required.
+
+MONGODB_URI = os.getenv("MONGODB_URI", "")
+MONGODB_NAME = os.getenv("MONGODB_NAME", "trackintake")
+
+if not MONGODB_URI:
+    raise ImproperlyConfigured(
+        "MONGODB_URI must be set. Copy the connection string from MongoDB Atlas "
+        "into your .env file (see .env.example)."
+    )
+
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django_mongodb_backend",
+        "HOST": MONGODB_URI,
+        "NAME": MONGODB_NAME,
     }
+}
+
+DEFAULT_AUTO_FIELD = "django_mongodb_backend.fields.ObjectIdAutoField"
+
+# Django's bundled apps ship migrations that assume an integer AutoField. These
+# point them at project-local copies regenerated for ObjectId primary keys.
+MIGRATION_MODULES = {
+    "admin": "config.mongo_migrations.admin",
+    "auth": "config.mongo_migrations.auth",
+    "contenttypes": "config.mongo_migrations.contenttypes",
+    "sessions": "config.mongo_migrations.sessions",
 }
 
 AUTH_PASSWORD_VALIDATORS = [
